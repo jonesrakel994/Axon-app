@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Axon — Authentication Flow</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+          },
+          colors: {
+            axon: {
+              blue: '#0022ff',
+              blueHover: '#001bd6',
+              teal: '#009799',
+              tealHover: '#007f81',
+              bgLight: '#dedede',
+              screenBg: '#e2e2e2',
+              inputBg: '#dedede',
+              borderDark: '#262626',
+            }
+          },
+          boxShadow: {
+            'btn-blue': '0 7px 18px -4px rgba(0, 34, 255, 0.45)',
+            'btn-teal': '0 7px 18px -4px rgba(0, 151, 153, 0.45)',
+            'phone': '0 25px 60px -15px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(0, 0, 0, 0.08)',
+            'input-bevel': '0 1px 2px rgba(0,0,0,0.06)',
+            'toast': '0 10px 25px -3px rgba(0,0,0,0.15), 0 4px 6px -2px rgba(0,0,0,0.05)'
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      box-sizing: border-box;
+    }
+    body {
+      background: radial-gradient(circle at 50% 20%, #ececec 0%, #d1d5db 100%);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    /* Screen Transition Animation */
+    .screen-container {
+      display: none;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: opacity 0.24s cubic-bezier(0.16, 1, 0.3, 1), transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .screen-container.active {
+      display: flex;
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* Custom Input appearance matching the Figma soft inset look */
+    .axon-input {
+      background-color: #dedede;
+      border: 1.5px solid #232323;
+      border-radius: 12px;
+      color: #171717;
+      font-size: 16px;
+      height: 52px;
+      padding: 0 16px;
+      width: 100%;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .axon-input::placeholder {
+      color: #838383;
+      font-weight: 400;
+    }
+    .axon-input:focus {
+      border-color: #0022ff;
+      background-color: #e5e5e5;
+      box-shadow: 0 0 0 3px rgba(0, 34, 255, 0.15);
+    }
+
+    /* Hide scrollbars but keep touch scroll smooth */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+
+<body class="min-h-screen flex flex-col items-center justify-center p-2 sm:p-6 text-neutral-900 select-none antialiased">
+
+  <header class="w-full max-w-sm mb-3 flex items-center justify-between px-2 text-xs font-semibold text-neutral-600">
+    <div class="flex items-center gap-1.5 bg-white/70 backdrop-blur-md px-3 py-1.5 rounded-full border border-neutral-300/80 shadow-sm">
+      <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span>Axon Prototype</span>
+    </div>
+
+    <!-- Quick Screen Selector for direct inspection -->
+    <div class="flex items-center gap-1 bg-white/70 backdrop-blur-md p-1 rounded-full border border-neutral-300/80 shadow-sm text-[11px]">
+      <button onclick="navigateTo('login-screen')" class="nav-pill px-2.5 py-1 rounded-full transition-all" data-target="login-screen">1</button>
+      <button onclick="navigateTo('signup-screen')" class="nav-pill px-2.5 py-1 rounded-full transition-all" data-target="signup-screen">2</button>
+      <button onclick="navigateTo('forgot-screen')" class="nav-pill px-2.5 py-1 rounded-full transition-all" data-target="forgot-screen">3</button>
+      <button onclick="navigateTo('email-sent-screen')" class="nav-pill px-2.5 py-1 rounded-full transition-all" data-target="email-sent-screen">4</button>
+      <button onclick="navigateTo('reset-screen')" class="nav-pill px-2.5 py-1 rounded-full transition-all" data-target="reset-screen">5</button>
+    </div>
+  </header>
+
+  <main class="relative w-full max-w-[390px] h-[835px] max-h-[92vh] bg-[#e2e2e2] rounded-[44px] shadow-phone flex flex-col overflow-hidden border-[7px] border-[#222224]">
+    
+    <!-- Top Status / Camera Notch Simulation -->
+    <div class="relative w-full pt-3 pb-1 px-7 flex items-center justify-between shrink-0 select-none z-30">
+      <span class="text-[13px] font-semibold tracking-tight text-neutral-800">9:41</span>
+      <div class="w-20 h-4 bg-black rounded-full mx-auto"></div>
+      <div class="flex items-center gap-1 text-neutral-800">
+        <!-- Cellular bars -->
+        <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+          <path d="M12 3c-4.97 0-9 4.03-9 9 0 2.12.74 4.07 1.97 5.61L4.35 19.4c-.22.28-.02.7.34.7h14.62c.36 0 .56-.42.34-.7l-.62-1.79C20.26 16.07 21 14.12 21 12c0-4.97-4.03-9-9-9z" opacity="0.2"/>
+          <rect x="2" y="16" width="3" height="5" rx="1"/>
+          <rect x="7" y="12" width="3" height="9" rx="1"/>
+          <rect x="12" y="8" width="3" height="13" rx="1"/>
+          <rect x="17" y="4" width="3" height="17" rx="1"/>
+        </svg>
+        <!-- Battery Icon -->
+        <div class="w-5 h-2.5 border border-neutral-700 rounded-sm p-0.5 flex items-center">
+          <div class="h-full w-3.5 bg-neutral-800 rounded-2xs"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inner Screen Viewport -->
+    <div class="relative w-full flex-1 overflow-y-auto overflow-x-hidden no-scrollbar px-6 flex flex-col justify-between">
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 1: AXON LOGIN                                      -->
+      <!-- ======================================================== -->
+      <section id="login-screen" class="screen-container active w-full min-h-full flex flex-col justify-between pt-6 pb-4">
+        
+        <!-- Header & Branding -->
+        <div class="flex flex-col items-center text-center">
+          <!-- Axon SVG Logo -->
+          <div class="axon-brand-logo mb-1 flex flex-col items-center">
+            <svg class="w-16 h-16" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <!-- Left dynamic blue leg -->
+              <path d="M38 16L18 64H29L39 37L48 58H33" fill="#0022ff"/>
+              <path d="M41 16L61 64H50L43 45L41 16Z" fill="#009696"/>
+              <!-- Diagonal swoosh dynamic fold -->
+              <path d="M22 60L46 22L40 18L18 56L22 60Z" fill="#001bd6"/>
+              <path d="M33 39L59 28L43 64L38 48L33 39Z" fill="#00a499"/>
+            </svg>
+            <span class="text-[21px] font-extrabold text-neutral-900 tracking-tight mt-0.5">Axon</span>
+          </div>
+
+          <h1 class="text-[26px] font-extrabold text-neutral-900 tracking-tight mt-2">Welcome Back!</h1>
+          <p class="text-[17px] font-medium text-neutral-900 mt-0.5">Sign into your account</p>
+        </div>
+
+        <!-- Form Elements -->
+        <div class="w-full mt-6 space-y-4">
+          <div>
+            <input type="email" placeholder="Email" class="axon-input" />
+          </div>
+
+          <div class="relative">
+            <input type="password" id="login-pass" placeholder="Password" class="axon-input pr-12" />
+            <button type="button" onclick="togglePassVisibility('login-pass', this)" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-neutral-900 p-1" aria-label="Toggle password visibility">
+              <svg class="eye-open w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              <svg class="eye-closed w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Forgot Password Link -->
+          <div class="flex justify-end pt-1">
+            <button type="button" onclick="navigateTo('forgot-screen')" class="text-[15px] font-semibold text-[#009696] hover:underline focus:outline-none">
+              Forgot Password?
+            </button>
+          </div>
+
+          <!-- Primary Log in Button -->
+          <button type="button" class="w-full mt-2 h-[52px] bg-[#0022ff] hover:bg-[#001bd6] text-white font-bold text-[18px] rounded-[16px] shadow-btn-blue active:scale-[0.98] transition-transform">
+            Log in
+          </button>
+        </div>
+
+        <!-- Social Login & Bottom Link -->
+        <div class="w-full mt-6 space-y-4">
+          <!-- Social Divider -->
+          <div class="relative flex items-center justify-center">
+            <div class="w-full border-t border-neutral-400"></div>
+            <span class="bg-[#e2e2e2] px-3 text-[15px] font-medium text-neutral-800 shrink-0">Social login</span>
+            <div class="w-full border-t border-neutral-400"></div>
+          </div>
+
+          <!-- Social Buttons -->
+          <div class="grid grid-cols-2 gap-4">
+            <!-- Google -->
+            <button type="button" class="h-[48px] bg-[#dedede] border-[1.5px] border-[#222224] rounded-[12px] flex items-center justify-center hover:bg-neutral-200 transition-colors shadow-sm active:scale-95">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.35 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.99 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+            </button>
+            <!-- Instagram -->
+            <button type="button" class="h-[48px] bg-[#dedede] border-[1.5px] border-[#222224] rounded-[12px] flex items-center justify-center hover:bg-neutral-200 transition-colors shadow-sm active:scale-95">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <radialGradient id="ig-grad" cx="20%" cy="100%" r="120%">
+                  <stop offset="0%" stop-color="#fed373"/>
+                  <stop offset="25%" stop-color="#f15245"/>
+                  <stop offset="60%" stop-color="#d92e7f"/>
+                  <stop offset="100%" stop-color="#9b36b7"/>
+                </radialGradient>
+                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-grad)" />
+                <circle cx="12" cy="12" r="4.2" stroke="#fff" stroke-width="2" fill="none" />
+                <circle cx="17.2" cy="6.8" r="1.2" fill="#fff" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Bottom Nav to Sign Up -->
+          <div class="text-center pt-2 pb-1">
+            <button type="button" onclick="navigateTo('signup-screen')" class="text-[17px] font-bold text-neutral-900 hover:text-neutral-700 tracking-tight">
+              Sign up
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 2: AXON SIGN UP                                    -->
+      <!-- ======================================================== -->
+      <section id="signup-screen" class="screen-container w-full min-h-full flex flex-col justify-between pt-6 pb-4">
+        
+        <!-- Header -->
+        <div class="flex flex-col items-center text-center">
+          <div class="axon-brand-logo mb-1 flex flex-col items-center">
+            <svg class="w-16 h-16" viewBox="0 0 80 80" fill="none">
+              <path d="M38 16L18 64H29L39 37L48 58H33" fill="#0022ff"/>
+              <path d="M41 16L61 64H50L43 45L41 16Z" fill="#009696"/>
+              <path d="M22 60L46 22L40 18L18 56L22 60Z" fill="#001bd6"/>
+              <path d="M33 39L59 28L43 64L38 48L33 39Z" fill="#00a499"/>
+            </svg>
+            <span class="text-[21px] font-extrabold text-neutral-900 tracking-tight mt-0.5">Axon</span>
+          </div>
+
+          <h1 class="text-[26px] font-extrabold text-neutral-900 tracking-tight mt-2">Create Account</h1>
+          <p class="text-[17px] font-medium text-neutral-900 mt-0.5">Plug into Axon!</p>
+        </div>
+
+        <!-- Inputs Form -->
+        <div class="w-full mt-4 space-y-3">
+          <div>
+            <input type="text" placeholder="Name" class="axon-input" />
+          </div>
+
+          <div class="space-y-0">
+            <input type="email" placeholder="Email" class="axon-input !rounded-b-none border-b-0" />
+            <div class="relative">
+              <input type="password" id="signup-pass" placeholder="Password" class="axon-input !rounded-t-none pr-12" />
+              <button type="button" onclick="togglePassVisibility('signup-pass', this)" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-neutral-900 p-1">
+                <svg class="eye-open w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <svg class="eye-closed w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <p class="text-[14px] text-neutral-900 font-normal px-1">
+            8+ characters, symbol, number
+          </p>
+
+          <!-- Create Account Button -> Navigate to Screen 4 (Reset Link Sent / Check Your Email) -->
+          <button type="button" onclick="navigateTo('email-sent-screen')" class="w-full mt-3 h-[52px] bg-[#0022ff] hover:bg-[#001bd6] text-white font-bold text-[18px] rounded-[16px] shadow-btn-blue active:scale-[0.98] transition-transform">
+            Create Account
+          </button>
+        </div>
+
+        <!-- Social login & Back to Login -->
+        <div class="w-full mt-4 space-y-3">
+          <div class="relative flex items-center justify-center">
+            <div class="w-full border-t border-neutral-400"></div>
+            <span class="bg-[#e2e2e2] px-3 text-[15px] font-medium text-neutral-800 shrink-0">Social login</span>
+            <div class="w-full border-t border-neutral-400"></div>
+          </div>
+
+          <!-- Social Buttons -->
+          <div class="grid grid-cols-2 gap-4">
+            <button type="button" class="h-[48px] bg-[#dedede] border-[1.5px] border-[#222224] rounded-[12px] flex items-center justify-center hover:bg-neutral-200 transition-colors shadow-sm active:scale-95">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"/>
+                <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.26v3.15C3.27 21.36 7.35 24 12 24z"/>
+                <path fill="#FBBC05" d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.26C.46 8.16 0 9.99 0 12s.46 3.84 1.26 5.42l4.02-3.15z"/>
+                <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.35 0 3.27 2.64 1.26 6.58l4.02 3.15c.95-2.83 3.6-4.98 6.72-4.98z"/>
+              </svg>
+            </button>
+            <button type="button" class="h-[48px] bg-[#dedede] border-[1.5px] border-[#222224] rounded-[12px] flex items-center justify-center hover:bg-neutral-200 transition-colors shadow-sm active:scale-95">
+              <svg class="w-6 h-6" viewBox="0 0 24 24">
+                <radialGradient id="ig-grad2" cx="20%" cy="100%" r="120%">
+                  <stop offset="0%" stop-color="#fed373"/>
+                  <stop offset="25%" stop-color="#f15245"/>
+                  <stop offset="60%" stop-color="#d92e7f"/>
+                  <stop offset="100%" stop-color="#9b36b7"/>
+                </radialGradient>
+                <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig-grad2)" />
+                <circle cx="12" cy="12" r="4.2" stroke="#fff" stroke-width="2" fill="none" />
+                <circle cx="17.2" cy="6.8" r="1.2" fill="#fff" />
+              </svg>
+            </button>
+          </div>
+
+          <!-- Bottom Nav to Login -->
+          <div class="text-center pt-2 pb-1">
+            <button type="button" onclick="navigateTo('login-screen')" class="text-[17px] font-bold text-neutral-900 hover:text-neutral-700 tracking-tight">
+              Log in
+            </button>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 3: FORGOT PASSWORD                                 -->
+      <!-- ======================================================== -->
+      <section id="forgot-screen" class="screen-container w-full min-h-full flex flex-col justify-between pt-10 pb-6">
+        
+        <!-- Header -->
+        <div class="flex flex-col items-center text-center">
+          <div class="axon-brand-logo mb-2 flex flex-col items-center">
+            <svg class="w-16 h-16" viewBox="0 0 80 80" fill="none">
+              <path d="M38 16L18 64H29L39 37L48 58H33" fill="#0022ff"/>
+              <path d="M41 16L61 64H50L43 45L41 16Z" fill="#009696"/>
+              <path d="M22 60L46 22L40 18L18 56L22 60Z" fill="#001bd6"/>
+              <path d="M33 39L59 28L43 64L38 48L33 39Z" fill="#00a499"/>
+            </svg>
+            <span class="text-[21px] font-extrabold text-neutral-900 tracking-tight mt-0.5">Axon</span>
+          </div>
+
+          <h1 class="text-[28px] font-extrabold text-neutral-900 tracking-tight mt-4">Forgot Password</h1>
+          <p class="text-[17px] font-medium text-neutral-900 max-w-[260px] mx-auto mt-2 leading-snug">
+            Enter your email to receive a password reset link
+          </p>
+        </div>
+
+        <!-- Input & Send Reset Link Button -->
+        <div class="w-full space-y-4 my-auto">
+          <div>
+            <input type="email" placeholder="Email" value="jonesrakel@gmail.com" class="axon-input" />
+          </div>
+
+          <!-- Solid Teal Button -->
+          <button type="button" onclick="navigateTo('email-sent-screen')" class="w-full h-[52px] bg-[#009799] hover:bg-[#007f81] text-white font-bold text-[18px] rounded-[16px] shadow-btn-teal active:scale-[0.98] transition-transform">
+            Send Reset Link
+          </button>
+        </div>
+
+        <!-- Back to Login -->
+        <div class="text-center pt-4 pb-2">
+          <button type="button" onclick="navigateTo('login-screen')" class="text-[18px] font-bold text-neutral-900 hover:text-neutral-700 tracking-tight">
+            Back to login
+          </button>
+        </div>
+
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 4: RESET LINK SENT / CHECK YOUR EMAIL              -->
+      <!-- ======================================================== -->
+      <section id="email-sent-screen" class="screen-container w-full min-h-full flex flex-col items-center justify-center pt-8 pb-10 text-center">
+        
+        <!-- Large Envelope Illustration -->
+        <div class="mb-7 flex items-center justify-center">
+          <svg class="w-28 h-28" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <!-- Envelope Body background -->
+            <path d="M10 24C10 18.4772 14.4772 14 20 14H100C105.523 14 110 18.4772 110 24V76C110 81.5228 105.523 86 100 86H20C14.4772 86 10 81.5228 10 76V24Z" fill="#7588ff" />
+            <!-- Inside fold shading -->
+            <path d="M10 86L54 48L10 20V86Z" fill="#5c72fc" />
+            <path d="M110 86L66 48L110 20V86Z" fill="#5c72fc" />
+            <path d="M12 86H108L60 48L12 86Z" fill="#435cf9" />
+            <!-- Top envelope flap -->
+            <path d="M12 18L60 56L108 18" stroke="#0022ff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Outer border -->
+            <rect x="10" y="14" width="100" height="72" rx="10" stroke="#0022ff" stroke-width="7" />
+          </svg>
+        </div>
+
+        <h1 class="text-[28px] font-extrabold text-neutral-900 tracking-tight">Check Your Email</h1>
+        <p class="text-[17px] font-medium text-neutral-900 mt-2.5 max-w-[260px] leading-snug">
+          A link is on its way to <span class="font-semibold break-all">jonesrakel@gmail.com</span>!
+        </p>
+
+        <!-- Resend Link (Teal Border Button) -> Navigates to Screen 5 (Reset Password) -->
+        <div class="w-full mt-8">
+          <button type="button" onclick="navigateTo('reset-screen')" class="w-full h-[52px] bg-[#dedede] border-[2.5px] border-[#009799] hover:bg-neutral-200 text-neutral-900 font-bold text-[18px] rounded-[16px] active:scale-[0.98] transition-all shadow-sm">
+            Resend Link
+          </button>
+        </div>
+
+      </section>
+
+      <!-- ======================================================== -->
+      <!-- SCREEN 5: RESET PASSWORD                                  -->
+      <!-- ======================================================== -->
+      <section id="reset-screen" class="screen-container w-full min-h-full flex flex-col justify-between pt-3 pb-6">
+        
+        <!-- Top Toast / Success Notification banner -->
+        <div class="w-full mb-1">
+          <div class="bg-white rounded-[14px] px-4 py-3 shadow-toast flex items-center gap-3 border border-neutral-200/60 transition-transform">
+            <div class="w-6 h-6 rounded-full bg-[#10b981] flex items-center justify-center shrink-0">
+              <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+            <span class="text-[17px] font-bold text-neutral-900 tracking-tight">Success!</span>
+          </div>
+        </div>
+
+        <!-- Axon Brand + Header -->
+        <div class="flex flex-col items-center text-center mt-1">
+          <!-- Axon Wordmark -->
+          <span class="text-[20px] font-extrabold text-neutral-900 tracking-tight">Axon</span>
+
+          <h1 class="text-[28px] font-extrabold text-neutral-900 tracking-tight mt-3">Reset Password</h1>
+          <p class="text-[17px] font-medium text-neutral-900 mt-1">
+            Create a new, secure password
+          </p>
+        </div>
+
+        <!-- Password Inputs & Complexity Strength Indicator -->
+        <div class="w-full space-y-3 mt-4">
+          <!-- New Password Input with eye toggle -->
+          <div class="relative">
+            <input type="password" id="reset-new-pass" placeholder="New Password" value="••••••••••••" class="axon-input pr-12" />
+            <button type="button" onclick="togglePassVisibility('reset-new-pass', this)" class="absolute right-3.5 top-1/2 -translate-y-1/2 text-neutral-600 hover:text-neutral-900 p-1">
+              <svg class="eye-open w-5 h-5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+              </svg>
+              <svg class="eye-closed w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18"/>
+              </svg>
+            </button>
+          </div>
+
+          <!-- Password Complexity Strength Bar (2 green segments, 1 gray segment) -->
+          <div class="pt-1 pb-1">
+            <div class="grid grid-cols-3 gap-1.5 h-1.5 w-full">
+              <div class="h-full bg-[#16a34a] rounded-full"></div>
+              <div class="h-full bg-[#16a34a] rounded-full"></div>
+              <div class="h-full bg-[#b5b5b5] rounded-full"></div>
+            </div>
+            <p class="text-[14px] text-neutral-900 font-medium mt-1.5">
+              Complexity Strength
+            </p>
+          </div>
+
+          <!-- Confirm Password Input -->
+          <div>
+            <input type="password" placeholder="Confirm Password" class="axon-input" />
+          </div>
+
+          <!-- Save New Password Button -> Navigates back to Screen 1 (Axon Login) -->
+          <div class="pt-3">
+            <button type="button" onclick="navigateTo('login-screen')" class="w-full h-[52px] bg-[#0022ff] hover:bg-[#001bd6] text-white font-bold text-[18px] rounded-[16px] shadow-btn-blue active:scale-[0.98] transition-transform">
+              Save New Password
+            </button>
+          </div>
+        </div>
+
+        <div class="h-4"></div>
+      </section>
+
+    </div>
+
+    <div class="w-full py-2.5 flex justify-center items-center shrink-0 bg-[#e2e2e2]">
+      <div class="w-36 h-1 bg-neutral-800 rounded-full opacity-90"></div>
+    </div>
+  </main>
+
+  <script>
+    // State management for screen navigation
+    function navigateTo(targetScreenId) {
+      // 1. Update screens
+      const screens = document.querySelectorAll('.screen-container');
+      screens.forEach(screen => {
+        screen.classList.remove('active');
+      });
+
+      const activeScreen = document.getElementById(targetScreenId);
+      if (activeScreen) {
+        activeScreen.classList.add('active');
+      }
+
+      // 2. Update navigation pills indicator
+      const pills = document.querySelectorAll('.nav-pill');
+      pills.forEach(pill => {
+        if (pill.dataset.target === targetScreenId) {
+          pill.className = 'nav-pill px-2.5 py-1 rounded-full font-bold bg-neutral-900 text-white shadow-sm transition-all';
+        } else {
+          pill.className = 'nav-pill px-2.5 py-1 rounded-full font-medium text-neutral-600 hover:text-neutral-900 transition-all';
+        }
+      });
+    }
+
+    // Toggle password visibility helper
+    function togglePassVisibility(inputId, btn) {
+      const input = document.getElementById(inputId);
+      const eyeOpen = btn.querySelector('.eye-open');
+      const eyeClosed = btn.querySelector('.eye-closed');
+
+      if (input.type === 'password') {
+        input.type = 'text';
+        eyeOpen.classList.add('hidden');
+        eyeClosed.classList.remove('hidden');
+      } else {
+        input.type = 'password';
+        eyeOpen.classList.remove('hidden');
+        eyeClosed.classList.add('hidden');
+      }
+    }
+
+    // Initialize pill highlights on initial load
+    document.addEventListener('DOMContentLoaded', () => {
+      navigateTo('login-screen');
+    });
+  </script>
+</body>
+</html>
